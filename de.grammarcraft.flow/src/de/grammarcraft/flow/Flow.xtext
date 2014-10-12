@@ -1,0 +1,55 @@
+grammar de.grammarcraft.flow.Flow with org.eclipse.xtext.xbase.Xbase
+
+generate flow "http://www.grammarcraft.de/flow/Flow"
+
+
+
+Model:
+    ('package' name=QualifiedName)?
+    imports=XImportSection?
+    functionUnits += FunctionUnit*
+;
+
+FunctionUnit:
+    'flow' name=ID
+    (streams += Stream* | 'alias' aliasType=JvmTypeReference)
+;
+
+Stream:
+    leftPort=Port connection=Connection rightPort=Port ';'
+;
+
+Port:
+    OwnPort |
+    ForeignPort |
+    ExternalReferencePort
+;
+
+OwnPort:
+    {OwnPort} port=NamedPort
+;
+
+ForeignPort:
+    functionUnit=[FunctionUnit|QualifiedName] port=NamedPort?
+;
+
+ExternalReferencePort:
+    '@' type=JvmTypeReference port=NamedPort?
+;
+
+NamedPort:
+    ':' name=ID
+;
+
+
+Connection:
+    TypeLessConnection | TypeAnnotatedConnection
+;
+
+TypeLessConnection:
+    '->' {TypeLessConnection}
+;
+
+TypeAnnotatedConnection:
+    '-' msgType=JvmTypeReference '->' 
+;

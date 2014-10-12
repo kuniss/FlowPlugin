@@ -1,0 +1,29 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: de.grammarcraft.flow.ui
+Bundle-Vendor: My Company
+Bundle-Version: 1.0.0.qualifier
+Bundle-SymbolicName: de.grammarcraft.flow.ui; singleton:=true
+Bundle-ActivationPolicy: lazy
+Require-Bundle: de.grammarcraft.flow;visibility:=reexport,
+ org.eclipse.xtext.ui,
+ org.eclipse.ui.editors;bundle-version="3.5.0",
+ org.eclipse.ui.ide;bundle-version="3.5.0",
+ org.eclipse.xtext.ui.shared,
+ org.eclipse.xtext.xbase.ui,
+ org.eclipse.ui,
+ org.eclipse.xtext.builder,
+ org.antlr.runtime,
+ org.eclipse.xtext.common.types.ui,
+ org.eclipse.xtext.ui.codetemplates.ui,
+ org.eclipse.compare,
+ org.eclipse.xtext.xbase.lib,
+ org.eclipse.jdt.debug.ui
+Import-Package: org.apache.log4j,
+ org.eclipse.xtext.xbase.lib
+Bundle-RequiredExecutionEnvironment: J2SE-1.5
+Export-Package: de.grammarcraft.flow.ui.quickfix,
+ de.grammarcraft.flow.ui.contentassist,
+ de.grammarcraft.flow.ui.contentassist.antlr,
+ de.grammarcraft.flow.ui.internal
+Bundle-Activator: de.grammarcraft.flow.ui.internal.FlowActivator
