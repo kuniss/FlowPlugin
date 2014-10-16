@@ -15,14 +15,11 @@ import java.util.HashSet
 import java.util.Map
 import java.util.Set
 import org.eclipse.emf.ecore.resource.Resource
-import org.eclipse.xtext.common.types.JvmAnnotationAnnotationValue
-import org.eclipse.xtext.common.types.JvmAnnotationReference
 import org.eclipse.xtext.common.types.JvmCustomAnnotationValue
 import org.eclipse.xtext.common.types.JvmDeclaredType
 import org.eclipse.xtext.common.types.JvmGenericType
 import org.eclipse.xtext.common.types.JvmType
 import org.eclipse.xtext.common.types.JvmTypeReference
-import org.eclipse.xtext.common.types.access.binary.asm.JvmAnnotationReferenceBuilder
 import org.eclipse.xtext.generator.IFileSystemAccess
 import org.eclipse.xtext.generator.IGenerator
 import org.eclipse.xtext.naming.IQualifiedNameProvider
@@ -30,7 +27,7 @@ import org.eclipse.xtext.xbase.XFeatureCall
 import org.eclipse.xtext.xbase.XListLiteral
 import org.eclipse.xtext.xbase.XStringLiteral
 import org.eclipse.xtext.xbase.annotations.xAnnotations.XAnnotation
-import org.eclipse.xtext.xbase.services.XbaseGrammarAccess.XLiteralElements
+import org.eclipse.xtext.xbase.lib.Functions.Function1
 
 enum FlowDirection {
     IN, OUT
@@ -57,13 +54,13 @@ class FlowGenerator implements IGenerator {
         
         fsa.generateFile("log.txt", '''
             // own ports
-            «resource.allContents.toIterable.filter(typeof(OwnPort))
+            «resource.allContents.toIterable.filter(typeof(OwnPort)).distinct[fullQualifiedName]
                 .map['''own port "«fullQualifiedName»"'''].join('\n')»
             // foreign ports
-            «resource.allContents.toIterable.filter(typeof(ForeignPort))
+            «resource.allContents.toIterable.filter(typeof(ForeignPort)).distinct[fullQualifiedName]
                 .map['''foreign port "«fullQualifiedName»"'''].join('\n')»
             // external ports
-            «resource.allContents.toIterable.filter(typeof(ExternalReferencePort))
+            «resource.allContents.toIterable.filter(typeof(ExternalReferencePort)).distinct[fullQualifiedName]
                 .map['''external port "«fullQualifiedName»"'''].join('\n')»
             // port types directly inferred from stream connection types
             «portTypesFromStreams.entrySet.map['''port «key»: «value?.qualifiedName»'''].join('\n')»
@@ -72,7 +69,7 @@ class FlowGenerator implements IGenerator {
             // inferred port types
             «inferredPortTypes.entrySet.map['''inferred «key»: «value»'''].join('\n')»
         ''')
-        
+
     }
     
     def computePortTypesFromExternalRefs(Iterable<FunctionUnit> units, Iterable<Stream> streams) {
@@ -211,11 +208,11 @@ class FlowGenerator implements IGenerator {
             }
             else {
                 inputPortAnnotation = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
-                findFirst[(elementValuePairs.findFirst[it.element.identifier == de.grammarcraft.xtend.flow.annotations.InputPort.name + '.name()']?.value as XStringLiteral).value == portSpec.port.name]
+                findFirst[(elementValuePairs.findFirst[it.element.identifier == InputPort.name + '.name()']?.value as XStringLiteral).value == portSpec.port.name]
             }
             
             if (inputPortAnnotation != null) {
-                val typeExpression = inputPortAnnotation?.elementValuePairs.findFirst[it.element.identifier == '''«de.grammarcraft.xtend.flow.annotations.InputPort.name».type()'''.toString]?.value as XFeatureCall
+                val typeExpression = inputPortAnnotation?.elementValuePairs.findFirst[it.element.identifier == '''«InputPort.name».type()'''.toString]?.value as XFeatureCall
                 val type = typeExpression.feature as JvmGenericType
                 val typeParams = type.typeParameters.join(',')
                 val typeRepr = type.identifier + if (typeParams.length > 0) '''<«typeParams»>''' else ''
@@ -241,10 +238,10 @@ class FlowGenerator implements IGenerator {
             }
             else {
                 inputPortAnnotation = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
-                findFirst[(elementValuePairs.findFirst[it.element.identifier == de.grammarcraft.xtend.flow.annotations.OutputPort.name + '.name()']?.value as XStringLiteral).value == portSpec.port.name]
+                findFirst[(elementValuePairs.findFirst[it.element.identifier == OutputPort.name + '.name()']?.value as XStringLiteral).value == portSpec.port.name]
             }
             if (inputPortAnnotation != null) {
-                val typeExpression = inputPortAnnotation?.elementValuePairs.findFirst[it.element.identifier == '''«de.grammarcraft.xtend.flow.annotations.OutputPort.name».type()'''.toString]?.value as XFeatureCall
+                val typeExpression = inputPortAnnotation?.elementValuePairs.findFirst[it.element.identifier == '''«OutputPort.name».type()'''.toString]?.value as XFeatureCall
                 val type = typeExpression.feature as JvmGenericType
                 val typeParams = type.typeParameters.join(',')
                 val typeRepr = type.identifier + if (typeParams.length > 0) '''<«typeParams»>''' else ''
@@ -281,19 +278,19 @@ class FlowGenerator implements IGenerator {
                 
         @FunctionUnit(
             inputPorts = #[
-                «unit.streams.map[leftPort].distinct.filter(typeof(OwnPort)).join(", ")[generateInputPort(inferredPortTypes)]»
+                «unit.streams.map[leftPort].filter(typeof(OwnPort)).distinct[port.name].join(',\n')[generateInputPort(inferredPortTypes)]»
             ],
             outputPorts = #[
-                «unit.streams.map[rightPort].distinct.filter(typeof(OwnPort)).join(", ")[generateOutputPort(inferredPortTypes)]»
+                «unit.streams.map[rightPort].filter(typeof(OwnPort)).distinct[port.name].join(',\n')[generateOutputPort(inferredPortTypes)]»
             ]
         )
         class «unit.name» {
         }
     '''
     
-    /** Remove all double values in a list, turning it into a list of unique values */
-    def static <T> distinct(Iterable<? extends T> values) {
-        values.groupBy[it].toPairs.map[value.head]
+    /** Remove all duplicates in a list according to given list element selector, turning it into a list of unique values */
+    def static <T> distinct(Iterable<? extends T> values, Function1<? super T, ? extends Object> selector) {
+        values.groupBy(selector).toPairs.map[value.head]
     }
 
     /** transforms a map into a list of pairs */
