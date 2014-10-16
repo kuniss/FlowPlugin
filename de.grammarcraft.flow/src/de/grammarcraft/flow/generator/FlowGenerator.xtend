@@ -15,20 +15,25 @@ import java.util.HashSet
 import java.util.Map
 import java.util.Set
 import org.eclipse.emf.ecore.resource.Resource
+import org.eclipse.xtext.common.types.JvmAnnotationReference
 import org.eclipse.xtext.common.types.JvmDeclaredType
 import org.eclipse.xtext.common.types.JvmType
 import org.eclipse.xtext.common.types.JvmTypeReference
 import org.eclipse.xtext.generator.IFileSystemAccess
 import org.eclipse.xtext.generator.IGenerator
 import org.eclipse.xtext.naming.IQualifiedNameProvider
+import org.eclipse.xtext.common.types.access.binary.asm.JvmAnnotationReferenceBuilder
+import org.eclipse.xtext.common.types.JvmAnnotationAnnotationValue
+import org.eclipse.xtext.common.types.JvmCustomAnnotationValue
+import org.eclipse.xtext.xbase.services.XbaseGrammarAccess.XLiteralElements
+import org.eclipse.xtext.xbase.XListLiteral
+import org.eclipse.xtext.xbase.annotations.xAnnotations.XAnnotation
+import org.eclipse.xtext.xbase.XStringLiteral
+import org.eclipse.xtext.xbase.XFeatureCall
+import org.eclipse.xtext.common.types.JvmGenericType
 
 enum FlowDirection {
     IN, OUT
-}
-
-@Data class InferencedPort {
-    val String name
-    val JvmTypeReference type
 }
 
 class FlowGenerator implements IGenerator {
@@ -38,8 +43,8 @@ class FlowGenerator implements IGenerator {
         val directConnections = initTransitiveClosure(resource);
         val transitiveClosure = computeTransitiveClosure(directConnections)
         
-        val streams = resource.allContents.toIterable.filter(typeof(Stream))
-        val  aliasRefs = resource.allContents.toIterable.filter(typeof(FunctionUnit)).filter[aliasType!=null]
+        val streams = resource.allContents.filter(typeof(Stream)).toList
+        val aliasRefs = resource.allContents.filter(typeof(FunctionUnit)).filter[aliasType!=null].toList
 
         val portTypesFromStreams = computePortTypesFromStreams(streams)
         val portTypesFromExternalRefs = computePortTypesFromExternalRefs(aliasRefs, streams)
@@ -47,8 +52,26 @@ class FlowGenerator implements IGenerator {
         val inferredPortTypes = inferPortTypes(transitiveClosure, portTypesFromStreams, portTypesFromExternalRefs, resource.allContents.toIterable.filter(typeof(OwnPort)))
         
         resource.allContents.toIterable.filter(typeof(FunctionUnit)).filter[aliasType==null].forEach[
-            fsa.generateFile(name+".xtend", it.generate(inferredPortTypes))
+            fsa.generateFile('''«fullyQualifiedName.skipLast(1).segments.join('/')»/«name».xtend''', generate(inferredPortTypes))
         ]
+        
+        fsa.generateFile("log.txt", '''
+            // own ports
+            «resource.allContents.toIterable.filter(typeof(OwnPort))
+                .map['''own port "«fullQualifiedName»"'''].join('\n')»
+            // foreign ports
+            «resource.allContents.toIterable.filter(typeof(ForeignPort))
+                .map['''foreign port "«fullQualifiedName»"'''].join('\n')»
+            // external ports
+            «resource.allContents.toIterable.filter(typeof(ExternalReferencePort))
+                .map['''external port "«fullQualifiedName»"'''].join('\n')»
+            // port types directly inferred from stream connection types
+            «portTypesFromStreams.entrySet.map['''port «key»: «value?.qualifiedName»'''].join('\n')»
+            // port types directly inferred from external references
+            «portTypesFromExternalRefs.entrySet.map['''port «key»: «value»'''].join('\n')»
+            // inferred port types
+            «inferredPortTypes.entrySet.map['''inferred «key»: «value»'''].join('\n')»
+        ''')
         
     }
     
@@ -60,7 +83,7 @@ class FlowGenerator implements IGenerator {
     }
     
 
-    def inferPortTypes(Map<String, Set<String>> transitiveClosure, Map<String, JvmType> portTypesFromStreams, Map<String, Class<?>> portTypesFromExternalRefs, Iterable<OwnPort> ownPorts) {
+    def inferPortTypes(Map<String, Set<String>> transitiveClosure, Map<String, JvmType> portTypesFromStreams, Map<String, String> portTypesFromExternalRefs, Iterable<OwnPort> ownPorts) {
         val inferredPortTypes = new HashMap<String, String>
         ownPorts.forEach[
             val portName = it.fullQualifiedName
@@ -70,7 +93,7 @@ class FlowGenerator implements IGenerator {
                     inferredPortTypes.put(portName, portTypesFromStreams.get(transitivePortName).identifier)
                 }
                 else if (portTypesFromExternalRefs.containsKey(transitivePortName)) {
-                    inferredPortTypes.put(portName, portTypesFromExternalRefs.get(transitivePortName).name)
+                    inferredPortTypes.put(portName, portTypesFromExternalRefs.get(transitivePortName))
                 }
             }
         ]
@@ -83,8 +106,8 @@ class FlowGenerator implements IGenerator {
                 val fu = port.eContainer.eContainer as FunctionUnit
                 '''«fu.fullyQualifiedName».«port.port?.name»'''
             } 
-            ExternalReferencePort: '''«port.type».«port.port?.name»'''
-            ForeignPort: '''«port.fullyQualifiedName»'''
+            ExternalReferencePort: '''«port.type.identifier».«port.port?.name»'''
+            ForeignPort: '''«port.functionUnit.fullyQualifiedName».«port.port?.name»'''
         }
     }
     
@@ -140,28 +163,31 @@ class FlowGenerator implements IGenerator {
         val portTypes = new HashMap<String, JvmType>
         streams.filter[connection instanceof TypeAnnotatedConnection].forEach[ 
             val portTypeRef = (connection as TypeAnnotatedConnection).msgType
-            portTypes.put(leftPort.fullQualifiedName, portTypeRef.type)
-            portTypes.put(rightPort.fullQualifiedName, portTypeRef.type)
+            if (!(leftPort instanceof ExternalReferencePort))
+                portTypes.put(leftPort.fullQualifiedName, portTypeRef.type)
+            if (!(rightPort instanceof ExternalReferencePort))
+                portTypes.put(rightPort.fullQualifiedName, portTypeRef.type)
         ]
         return portTypes
     }
            
     def computePortTypesFromExternalsRefsInStreams(Iterable<Stream> streams) {
-        val portTypes = new HashMap<String, Class<?>> 
+        val portTypes = new HashMap<String, String> 
+        
         streams.filter[leftPort instanceof ExternalReferencePort].forEach[
-            val portType = (leftPort as ExternalReferencePort).inputPortType
+            val portType = (leftPort as ExternalReferencePort).outputPortType
             if (rightPort instanceof ExternalReferencePort) {
-                val otherPortType = (rightPort as ExternalReferencePort).outputPortType
+                val otherPortType = (rightPort as ExternalReferencePort).inputPortType
                 if (portType != otherPortType)
                     // TODO log error
-                    println('''left port «leftPort» of type «portType.name» mismatch right port «rightPort» of type «otherPortType.name»''')               
+                    println('''left port «leftPort» of type «portType» mismatch right port «rightPort» of type «otherPortType»''')               
             }
             else
                 portTypes.put(rightPort.fullQualifiedName, portType)
         ]
             
         streams.filter[rightPort instanceof ExternalReferencePort].forEach[
-            val portType = (rightPort as ExternalReferencePort).outputPortType
+            val portType = (rightPort as ExternalReferencePort).inputPortType
             if (!(leftPort instanceof ExternalReferencePort)) {
                 portTypes.put(leftPort.fullQualifiedName, portType)
             }
@@ -169,38 +195,58 @@ class FlowGenerator implements IGenerator {
         return portTypes
     }
     
-    def Class<?> inputPortType(ExternalReferencePort port) {
-        if(port.type instanceof JvmDeclaredType) {
-            val declaredType = port.type as JvmDeclaredType
-            val portAnnotation = declaredType?.annotations.filter(typeof(InputPort)).head
-            return portAnnotation?.type
+    def String inputPortType(ExternalReferencePort port) {
+        if(port.type.type instanceof JvmDeclaredType) {
+            val portDeclaringType = port.type.type as JvmDeclaredType
+            val fuAnnotation = portDeclaringType?.annotations.findFirst[annotation.qualifiedName == de.grammarcraft.xtend.flow.annotations.FunctionUnit.name] // should be only one
+            val inputPortsAnnotationValue = fuAnnotation?.values.findFirst[valueName == 'inputPorts'] as JvmCustomAnnotationValue
+            val inputPortAnnotationsList = inputPortsAnnotationValue?.values.findFirst[it instanceof XListLiteral] as XListLiteral
+            val inputPortAnnotation = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
+            findFirst[(elementValuePairs.findFirst[it.element.identifier == de.grammarcraft.xtend.flow.annotations.InputPort.name + '.name()']?.value as XStringLiteral).value == port.port.name]
+            if (inputPortAnnotation != null) {
+                val typeExpression = inputPortAnnotation?.elementValuePairs.findFirst[it.element.identifier == '''«de.grammarcraft.xtend.flow.annotations.InputPort.name».type()'''.toString]?.value as XFeatureCall
+                val type = typeExpression.feature as JvmGenericType
+                val typeParams = type.typeParameters.join(',')
+                val typeRepr = type.identifier + if (typeParams.length > 0) '''<«typeParams»>''' else ''
+                return typeRepr
+            }
         }
-        return null
+        return 'port_type_could_not_be_determined'
     }
 
-    def Class<?> outputPortType(ExternalReferencePort port) {
-        if(port.type instanceof JvmDeclaredType) {
-            val declaredType = port.type as JvmDeclaredType
-            val portAnnotation = declaredType?.annotations.filter(typeof(OutputPort)).head
-            return portAnnotation?.type
+    def String outputPortType(ExternalReferencePort port) {
+        if(port.type.type instanceof JvmDeclaredType) {
+            val portDeclaringType = port.type.type as JvmDeclaredType
+            val fuAnnotation = portDeclaringType?.annotations.findFirst[annotation.qualifiedName == de.grammarcraft.xtend.flow.annotations.FunctionUnit.name] // should be only one
+            val inputPortsAnnotationValue = fuAnnotation?.values.findFirst[valueName == 'outputPorts'] as JvmCustomAnnotationValue
+            val inputPortAnnotationsList = inputPortsAnnotationValue?.values.findFirst[it instanceof XListLiteral] as XListLiteral
+            val inputPortAnnotation = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
+            findFirst[(elementValuePairs.findFirst[it.element.identifier == de.grammarcraft.xtend.flow.annotations.OutputPort.name + '.name()']?.value as XStringLiteral).value == port.port.name]
+            if (inputPortAnnotation != null) {
+                val typeExpression = inputPortAnnotation?.elementValuePairs.findFirst[it.element.identifier == '''«de.grammarcraft.xtend.flow.annotations.OutputPort.name».type()'''.toString]?.value as XFeatureCall
+                val type = typeExpression.feature as JvmGenericType
+                val typeParams = type.typeParameters.join(',')
+                val typeRepr = type.identifier + if (typeParams.length > 0) '''<«typeParams»>''' else ''
+                return typeRepr
+            }
         }
-        return null
+        return 'port_type_could_not_be_determined'
     }
     
     def computePortTypesFromAliases(Iterable<FunctionUnit> aliasedFunctionUnits) {
-        val Map<String, Class<?>> portTypes = new HashMap
+        val Map<String, String> portTypes = new HashMap
         aliasedFunctionUnits.forEach[
             computePortTypesFromAlias(portTypes, name, aliasType)
         ]
         return portTypes
     }
     
-    def computePortTypesFromAlias(Map<String, Class<?>> portTypes, String functionUnitName, JvmTypeReference functionUnitType) {
+    def computePortTypesFromAlias(Map<String, String> portTypes, String functionUnitName, JvmTypeReference functionUnitType) {
         if (functionUnitType.type instanceof JvmDeclaredType) {
             val declaredType = functionUnitType as JvmDeclaredType
             val inputPortAnnotations = declaredType.annotations.filter(typeof(InputPort))
             inputPortAnnotations.forEach[
-                portTypes.put('''«functionUnitName».«name»''', type)
+                portTypes.put('''«functionUnitName».«name»''', type.name)
             ]
         }
     }
@@ -208,21 +254,40 @@ class FlowGenerator implements IGenerator {
     def CharSequence generate(FunctionUnit unit, HashMap<String, String> inferredPortTypes) '''
         package «unit.fullyQualifiedName.skipLast(1)»
         
+        import de.grammarcraft.xtend.flow.annotations.FunctionUnit
+        import de.grammarcraft.xtend.flow.annotations.InputPort
+        import de.grammarcraft.xtend.flow.annotations.OutputPort
+                
         @FunctionUnit(
             inputPorts = #[
-                «unit.streams.map[leftPort].filter(typeof(OwnPort)).join(", ")[generateInputPort(inferredPortTypes)]»
+                «unit.streams.map[leftPort].distinct.filter(typeof(OwnPort)).join(", ")[generateInputPort(inferredPortTypes)]»
             ],
             outputPorts = #[
-                «unit.streams.map[rightPort].filter(typeof(OwnPort)).join(", ")[generateOutputPort(inferredPortTypes)]»
+                «unit.streams.map[rightPort].distinct.filter(typeof(OwnPort)).join(", ")[generateOutputPort(inferredPortTypes)]»
             ]
         )
         class «unit.name» {
         }            
     '''
     
-    def generateInputPort(OwnPort input, HashMap<String, String> inferredPortTypes) '''
-        @InputPort(name="«input.port.name»", type=«inferredPortTypes.get(input.fullQualifiedName)»)
-    '''
+    /** Remove all double values in a list, turning it into a list of unique values */
+    def static <T> distinct(Iterable<? extends T> values) {
+        values.groupBy[it].toPairs.map[value.head]
+    }
+
+    /** transforms a map into a list of pairs */
+    def static <K, V> toPairs(Map<K, V> map) {
+        map.entrySet.map[it.key -> it.value].toList
+    }
+    
+    def generateInputPort(OwnPort input, HashMap<String, String> inferredPortTypes) {
+        var portTypeName = inferredPortTypes.get(input.fullQualifiedName)
+        if (portTypeName == null || portTypeName.length == 0)
+            portTypeName = '''<unknow type for "«input.fullQualifiedName»"'''
+        '''
+            @InputPort(name="«input.port.name»", type=«portTypeName»)
+        '''
+    }
     
     def generateOutputPort(OwnPort output, HashMap<String, String> inferredPortTypes) '''
         @OutputPort(name="«output.port.name»", type=«inferredPortTypes.get(output.fullQualifiedName)»)

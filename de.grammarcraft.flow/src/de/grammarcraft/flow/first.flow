@@ -5,16 +5,16 @@ import de.grammarcraft.xtend.annotatedflow.ToUpper
 import de.grammarcraft.xtend.annotatedflow.Collector
 
 flow main
-:in -> @ Reverse;
-@Reverse -String-> Normalizer;
-@Reverse -> @ToUpper;
+:in -> @Reverse:input;
+@Reverse:output -> Normalizer:lower;
+@Reverse:output -> @ToUpper:input;
 Normalizer:lower -> @Collector:lower;
 Normalizer:upper -> @Collector:upper;
-@Collector -> :out;
+@Collector:output -> :out;
 
 flow Normalizer
-:in -> @de.grammarcraft.xtend.annotatedflow.ToLower;
-:in -> @ToUpper;
-@de.grammarcraft.xtend.annotatedflow.ToLower -> :lower;
-@ToUpper -> :upper;
+:in -> @de.grammarcraft.xtend.annotatedflow.ToLower:input;
+:in -> @ToUpper:input;
+@de.grammarcraft.xtend.annotatedflow.ToLower:output -> :lower;
+@ToUpper:output -> :upper;
 
