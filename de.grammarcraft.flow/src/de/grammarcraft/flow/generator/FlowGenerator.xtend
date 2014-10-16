@@ -224,24 +224,9 @@ class FlowGenerator implements IGenerator {
 
     def String outputPortType(ExternalReferencePort portSpec) {
         if(portSpec.type.type instanceof JvmDeclaredType) {
-            val portDeclaringType = portSpec.type.type as JvmDeclaredType
-            val fuAnnotation = portDeclaringType?.annotations.findFirst[annotation.qualifiedName == de.grammarcraft.xtend.flow.annotations.FunctionUnit.name] // should be only one
-            val inputPortsAnnotationValue = fuAnnotation?.values.findFirst[valueName == 'outputPorts'] as JvmCustomAnnotationValue
-            val inputPortAnnotationsList = inputPortsAnnotationValue?.values.findFirst[it instanceof XListLiteral] as XListLiteral
-            var XAnnotation inputPortAnnotation 
-            if (portSpec.port == null) { // implicit on and only port of the particular function unit has to be used
-                val xAnnotationList = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation]
-                if (xAnnotationList.length > 1) {
-                    // TODO log warning "port specification is ambiguous as no port is specified but function unit has more than one port"
-                }
-                inputPortAnnotation = xAnnotationList.head
-            }
-            else {
-                inputPortAnnotation = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
-                findFirst[(elementValuePairs.findFirst[it.element.identifier == OutputPort.name + '.name()']?.value as XStringLiteral).value == portSpec.port.name]
-            }
-            if (inputPortAnnotation != null) {
-                val typeExpression = inputPortAnnotation?.elementValuePairs.findFirst[it.element.identifier == '''«OutputPort.name».type()'''.toString]?.value as XFeatureCall
+            val outputPortAnnotation = portSpec.outputPortAnnotation
+            if (outputPortAnnotation != null) {
+                val typeExpression = outputPortAnnotation.elementValuePairs.findFirst[it.element.identifier == '''«OutputPort.name».type()'''.toString]?.value as XFeatureCall
                 val type = typeExpression.feature as JvmGenericType
                 val typeParams = type.typeParameters.join(',')
                 val typeRepr = type.identifier + if (typeParams.length > 0) '''<«typeParams»>''' else ''
@@ -249,6 +234,24 @@ class FlowGenerator implements IGenerator {
             }
         }
         return 'port_type_could_not_be_determined'
+    }
+    
+    def outputPortAnnotation(ExternalReferencePort portSpec) {
+        val portDeclaringType = portSpec.type.type as JvmDeclaredType
+        val fuAnnotation = portDeclaringType?.annotations.findFirst[annotation.qualifiedName == de.grammarcraft.xtend.flow.annotations.FunctionUnit.name] // should be only one
+        val inputPortsAnnotationValue = fuAnnotation?.values.findFirst[valueName == 'outputPorts'] as JvmCustomAnnotationValue
+        val inputPortAnnotationsList = inputPortsAnnotationValue?.values.findFirst[it instanceof XListLiteral] as XListLiteral
+        if (portSpec.port == null) { // implicit on and only port of the particular function unit has to be used
+            val xAnnotationList = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation]
+            if (xAnnotationList.length > 1) {
+                // TODO log warning "port specification is ambiguous as no port is specified but function unit has more than one port"
+            }
+            xAnnotationList.head
+        }
+        else {
+            inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
+            findFirst[(elementValuePairs.findFirst[it.element.identifier == OutputPort.name + '.name()']?.value as XStringLiteral).value == portSpec.port.name]
+        }
     }
     
     def computePortTypesFromAliases(Iterable<FunctionUnit> aliasedFunctionUnits) {
@@ -285,8 +288,58 @@ class FlowGenerator implements IGenerator {
             ]
         )
         class «unit.name» {
+            «val streamsWithOwnRightPort = unit.streams.filter[rightPort instanceof OwnPort].toList»
+            «streamsWithOwnRightPort.join('\n')[generateLeftPortFUs]»
+            new() {
+                bind();
+            }
+            
+            private def bind() {
+                «streamsWithOwnRightPort.join('\n')[generateForwardingFromLeftFUs]»
+            }
         }
     '''
+    
+    def generateLeftPortFUs(Stream stream) '''
+        val «stream.leftPort.varName» = new «stream.leftPort.containingFunctionUnitFQN»
+    '''
+    
+    def varName(Port port) {
+        switch port {
+            OwnPort: '!recursive_weaving_from_ownport_back_to_own_port_not_supported_yet!' 
+            ExternalReferencePort: port.type.identifier.replace('.', '_')
+            ForeignPort: port.functionUnit.fullyQualifiedName.toString('_')
+        }
+    } 
+
+    def containingFunctionUnitFQN(Port port) {
+        switch port {
+            OwnPort: '!recursive_weaving_from_ownport_back_to_own_port_not_supported_yet!' 
+            ExternalReferencePort: port.type.identifier
+            ForeignPort: port.functionUnit.fullyQualifiedName
+        }
+    }
+    
+    /** foreign port -> own port */
+    def generateForwardingFromLeftFUs(Stream stream) '''
+        «stream.leftPort.varName».«stream.leftPort.outputPortName» -> [msg | «(stream.rightPort as OwnPort)?.port?.name».forward(msg)]
+    '''
+    
+    def outputPortName(Port port) {
+        if (port.port != null) // explicit port specification
+            return port.port.name 
+        else // implicit port specification
+            switch port {
+                OwnPort: '!recursive_weaving_from_own_port_back_to_own_port_not_supported_yet!'
+                ForeignPort: (port.functionUnit.streams.filter[rightPort instanceof OwnPort].head as OwnPort).port.name // there must be only one take the first one // TODO optimize by making a map of own output ports per FU
+                ExternalReferencePort: port.externalOutputPortName
+            }
+    }
+    
+    /** Determines the external output port name from the OutputPort annotation */
+    def externalOutputPortName(ExternalReferencePort port) {
+        (port.outputPortAnnotation.elementValuePairs.findFirst[it.element.identifier == OutputPort.name + '.name()']?.value as XStringLiteral).value
+    }
     
     /** Remove all duplicates in a list according to given list element selector, turning it into a list of unique values */
     def static <T> distinct(Iterable<? extends T> values, Function1<? super T, ? extends Object> selector) {
