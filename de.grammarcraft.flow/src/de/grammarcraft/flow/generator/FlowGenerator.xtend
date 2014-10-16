@@ -15,22 +15,22 @@ import java.util.HashSet
 import java.util.Map
 import java.util.Set
 import org.eclipse.emf.ecore.resource.Resource
+import org.eclipse.xtext.common.types.JvmAnnotationAnnotationValue
 import org.eclipse.xtext.common.types.JvmAnnotationReference
+import org.eclipse.xtext.common.types.JvmCustomAnnotationValue
 import org.eclipse.xtext.common.types.JvmDeclaredType
+import org.eclipse.xtext.common.types.JvmGenericType
 import org.eclipse.xtext.common.types.JvmType
 import org.eclipse.xtext.common.types.JvmTypeReference
+import org.eclipse.xtext.common.types.access.binary.asm.JvmAnnotationReferenceBuilder
 import org.eclipse.xtext.generator.IFileSystemAccess
 import org.eclipse.xtext.generator.IGenerator
 import org.eclipse.xtext.naming.IQualifiedNameProvider
-import org.eclipse.xtext.common.types.access.binary.asm.JvmAnnotationReferenceBuilder
-import org.eclipse.xtext.common.types.JvmAnnotationAnnotationValue
-import org.eclipse.xtext.common.types.JvmCustomAnnotationValue
-import org.eclipse.xtext.xbase.services.XbaseGrammarAccess.XLiteralElements
-import org.eclipse.xtext.xbase.XListLiteral
-import org.eclipse.xtext.xbase.annotations.xAnnotations.XAnnotation
-import org.eclipse.xtext.xbase.XStringLiteral
 import org.eclipse.xtext.xbase.XFeatureCall
-import org.eclipse.xtext.common.types.JvmGenericType
+import org.eclipse.xtext.xbase.XListLiteral
+import org.eclipse.xtext.xbase.XStringLiteral
+import org.eclipse.xtext.xbase.annotations.xAnnotations.XAnnotation
+import org.eclipse.xtext.xbase.services.XbaseGrammarAccess.XLiteralElements
 
 enum FlowDirection {
     IN, OUT
@@ -195,14 +195,25 @@ class FlowGenerator implements IGenerator {
         return portTypes
     }
     
-    def String inputPortType(ExternalReferencePort port) {
-        if(port.type.type instanceof JvmDeclaredType) {
-            val portDeclaringType = port.type.type as JvmDeclaredType
+    def String inputPortType(ExternalReferencePort portSpec) {
+        if(portSpec.type.type instanceof JvmDeclaredType) {
+            val portDeclaringType = portSpec.type.type as JvmDeclaredType
             val fuAnnotation = portDeclaringType?.annotations.findFirst[annotation.qualifiedName == de.grammarcraft.xtend.flow.annotations.FunctionUnit.name] // should be only one
             val inputPortsAnnotationValue = fuAnnotation?.values.findFirst[valueName == 'inputPorts'] as JvmCustomAnnotationValue
             val inputPortAnnotationsList = inputPortsAnnotationValue?.values.findFirst[it instanceof XListLiteral] as XListLiteral
-            val inputPortAnnotation = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
-            findFirst[(elementValuePairs.findFirst[it.element.identifier == de.grammarcraft.xtend.flow.annotations.InputPort.name + '.name()']?.value as XStringLiteral).value == port.port.name]
+            var XAnnotation inputPortAnnotation 
+            if (portSpec.port == null) { // implicit on and only port of the particular function unit has to be used
+                val xAnnotationList = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation]
+                if (xAnnotationList.length > 1) {
+                    // TODO log warning "port specification is ambiguous as no port is specified but function unit has more than one port"
+                }
+                inputPortAnnotation = xAnnotationList.head
+            }
+            else {
+                inputPortAnnotation = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
+                findFirst[(elementValuePairs.findFirst[it.element.identifier == de.grammarcraft.xtend.flow.annotations.InputPort.name + '.name()']?.value as XStringLiteral).value == portSpec.port.name]
+            }
+            
             if (inputPortAnnotation != null) {
                 val typeExpression = inputPortAnnotation?.elementValuePairs.findFirst[it.element.identifier == '''«de.grammarcraft.xtend.flow.annotations.InputPort.name».type()'''.toString]?.value as XFeatureCall
                 val type = typeExpression.feature as JvmGenericType
@@ -214,14 +225,24 @@ class FlowGenerator implements IGenerator {
         return 'port_type_could_not_be_determined'
     }
 
-    def String outputPortType(ExternalReferencePort port) {
-        if(port.type.type instanceof JvmDeclaredType) {
-            val portDeclaringType = port.type.type as JvmDeclaredType
+    def String outputPortType(ExternalReferencePort portSpec) {
+        if(portSpec.type.type instanceof JvmDeclaredType) {
+            val portDeclaringType = portSpec.type.type as JvmDeclaredType
             val fuAnnotation = portDeclaringType?.annotations.findFirst[annotation.qualifiedName == de.grammarcraft.xtend.flow.annotations.FunctionUnit.name] // should be only one
             val inputPortsAnnotationValue = fuAnnotation?.values.findFirst[valueName == 'outputPorts'] as JvmCustomAnnotationValue
             val inputPortAnnotationsList = inputPortsAnnotationValue?.values.findFirst[it instanceof XListLiteral] as XListLiteral
-            val inputPortAnnotation = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
-            findFirst[(elementValuePairs.findFirst[it.element.identifier == de.grammarcraft.xtend.flow.annotations.OutputPort.name + '.name()']?.value as XStringLiteral).value == port.port.name]
+            var XAnnotation inputPortAnnotation 
+            if (portSpec.port == null) { // implicit on and only port of the particular function unit has to be used
+                val xAnnotationList = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation]
+                if (xAnnotationList.length > 1) {
+                    // TODO log warning "port specification is ambiguous as no port is specified but function unit has more than one port"
+                }
+                inputPortAnnotation = xAnnotationList.head
+            }
+            else {
+                inputPortAnnotation = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
+                findFirst[(elementValuePairs.findFirst[it.element.identifier == de.grammarcraft.xtend.flow.annotations.OutputPort.name + '.name()']?.value as XStringLiteral).value == portSpec.port.name]
+            }
             if (inputPortAnnotation != null) {
                 val typeExpression = inputPortAnnotation?.elementValuePairs.findFirst[it.element.identifier == '''«de.grammarcraft.xtend.flow.annotations.OutputPort.name».type()'''.toString]?.value as XFeatureCall
                 val type = typeExpression.feature as JvmGenericType
@@ -267,7 +288,7 @@ class FlowGenerator implements IGenerator {
             ]
         )
         class «unit.name» {
-        }            
+        }
     '''
     
     /** Remove all double values in a list, turning it into a list of unique values */
