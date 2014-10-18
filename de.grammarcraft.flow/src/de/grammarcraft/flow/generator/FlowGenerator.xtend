@@ -10,6 +10,7 @@ import de.grammarcraft.flow.flow.Stream
 import de.grammarcraft.flow.flow.TypeAnnotatedConnection
 import de.grammarcraft.xtend.flow.annotations.InputPort
 import de.grammarcraft.xtend.flow.annotations.OutputPort
+import java.util.ArrayList
 import java.util.HashMap
 import java.util.HashSet
 import java.util.Map
@@ -293,15 +294,14 @@ class FlowGenerator implements IGenerator {
             ]
         )
         class «unit.name» {
-            «val streamsWithOwnRightPort = unit.streams.filter[rightPort instanceof OwnPort].toList»
-            «streamsWithOwnRightPort.distinct[(rightPort as OwnPort)?.port.name].
-                map[leftPort.generateFunctionUnitInstantiation].join»
-            
+            «val externaLAndForeignPorts = unit.streams.fold(new ArrayList<Port>)[list, stream | list.addBothPortsOf(stream)].filter[!(it instanceof OwnPort)].distinct[varName].toList»
+            «externaLAndForeignPorts.map[generateFunctionUnitVarInstantiation].join»
             new() {
                 bind();
             }
             
             private def bind() {
+                «val streamsWithOwnRightPort = unit.streams.filter[rightPort instanceof OwnPort].toList»
                 «streamsWithOwnRightPort.map[generateForwardingFromLeftFUs].join»
             }
             
@@ -310,6 +310,12 @@ class FlowGenerator implements IGenerator {
                 map[generateInputPortImplementations(streamsWithOwnLeftPort)].join»
         }
     '''
+    
+    def addBothPortsOf(ArrayList<Port> ports, Stream stream) {
+        ports.add(stream.leftPort)
+        ports.add(stream.rightPort)
+        return ports
+    }
     
     def generateInputPortImplementations(OwnPort ownPort, Iterable<Stream> allStreamsWithOwnPortOnLeftSide) '''
         override process«ownPort.port.name.toFirstUpper»(«inferredPortTypes.get(ownPort.fullQualifiedName)» msg) {
@@ -338,9 +344,8 @@ class FlowGenerator implements IGenerator {
     def externalInputPortName(ExternalReferencePort port) {
         (port.inputPortAnnotation.elementValuePairs.findFirst[it.element.identifier == InputPort.name + '.name()']?.value as XStringLiteral).value
     }
-
     
-    def generateFunctionUnitInstantiation(Port port) '''
+    def generateFunctionUnitVarInstantiation(Port port) '''
         val «port.varName» = new «port.containingFunctionUnitFQN»
     '''
     
