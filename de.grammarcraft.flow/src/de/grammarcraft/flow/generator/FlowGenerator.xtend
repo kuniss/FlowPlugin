@@ -30,10 +30,6 @@ import org.eclipse.xtext.xbase.XStringLiteral
 import org.eclipse.xtext.xbase.annotations.xAnnotations.XAnnotation
 import org.eclipse.xtext.xbase.lib.Functions.Function1
 
-enum FlowDirection {
-    IN, OUT
-}
-
 class FlowGenerator implements IGenerator {
     @Inject extension IQualifiedNameProvider
     
