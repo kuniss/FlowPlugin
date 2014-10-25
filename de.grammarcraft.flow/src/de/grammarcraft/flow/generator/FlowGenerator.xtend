@@ -55,14 +55,14 @@ class FlowGenerator implements IGenerator {
         
         fsa.generateFile(resource.normalizedURI.lastSegment + ".log", '''
             // own ports
-            «resource.allContents.toIterable.filter(typeof(OwnPort)).distinct[fullQualifiedName]
-                .map['''own port "«fullQualifiedName»"'''].join('\n')»
+            «resource.allContents.toIterable.filter(typeof(OwnPort)).distinct[fullyQualifiedPortName]
+                .map['''own port "«fullyQualifiedPortName»"'''].join('\n')»
             // foreign ports
-            «resource.allContents.toIterable.filter(typeof(ForeignPort)).distinct[fullQualifiedName]
-                .map['''foreign port "«fullQualifiedName»"'''].join('\n')»
+            «resource.allContents.toIterable.filter(typeof(ForeignPort)).distinct[fullyQualifiedPortName]
+                .map['''foreign port "«fullyQualifiedPortName»"'''].join('\n')»
             // external ports
-            «resource.allContents.toIterable.filter(typeof(ExternalReferencePort)).distinct[fullQualifiedName]
-                .map['''external port "«fullQualifiedName»"'''].join('\n')»
+            «resource.allContents.toIterable.filter(typeof(ExternalReferencePort)).distinct[fullyQualifiedPortName]
+                .map['''external port "«fullyQualifiedPortName»"'''].join('\n')»
             // port types directly inferred from stream connection types
             «portTypesFromStreams.entrySet.map['''port «key»: «value?.qualifiedName»'''].join('\n')»
             // port types directly inferred from external references
@@ -84,7 +84,7 @@ class FlowGenerator implements IGenerator {
     def inferPortTypes(Map<String, Set<String>> transitiveClosure, Map<String, JvmType> portTypesFromStreams, Map<String, String> portTypesFromExternalRefs, Iterable<OwnPort> ownPorts) {
         val inferredPortTypes = new HashMap<String, String>
         ownPorts.forEach[
-            val portName = it.fullQualifiedName
+            val portName = it.fullyQualifiedPortName
             for(transitivePortName : transitiveClosure.get(portName))
             {
                 if (portTypesFromStreams.containsKey(transitivePortName)) {
@@ -98,7 +98,7 @@ class FlowGenerator implements IGenerator {
         return inferredPortTypes
     }
     
-    def String fullQualifiedName(Port port) {
+    def String fullyQualifiedPortName(Port port) {
         switch port {
             OwnPort: {
                 val fu = port.getContainerOfType(FunctionUnit)
@@ -113,13 +113,13 @@ class FlowGenerator implements IGenerator {
     def initTransitiveClosure(Resource resource) {
         val Map<String, Set<String>> directConnections = new HashMap;
         for (stream: resource.allContents.toIterable.filter(typeof(Stream))) {
-            val leftPortName =  stream.leftPort.fullQualifiedName
-            val rightPortName = stream.rightPort.fullQualifiedName
+            val leftPortName =  stream.leftPort.fullyQualifiedPortName
+            val rightPortName = stream.rightPort.fullyQualifiedPortName
             directConnections.addConnection(leftPortName, rightPortName)
         }
         // connections to itself
         for(port: resource.allContents.toIterable.filter(typeof(Port))) {
-            val portName = port.fullQualifiedName
+            val portName = port.fullyQualifiedPortName
             directConnections.addConnection(portName, portName)
         }
         return directConnections
@@ -162,9 +162,9 @@ class FlowGenerator implements IGenerator {
         streams.filter[connection instanceof TypeAnnotatedConnection].forEach[ 
             val portTypeRef = (connection as TypeAnnotatedConnection).msgType
             if (!(leftPort instanceof ExternalReferencePort))
-                portTypes.put(leftPort.fullQualifiedName, portTypeRef.type)
+                portTypes.put(leftPort.fullyQualifiedPortName, portTypeRef.type)
             if (!(rightPort instanceof ExternalReferencePort))
-                portTypes.put(rightPort.fullQualifiedName, portTypeRef.type)
+                portTypes.put(rightPort.fullyQualifiedPortName, portTypeRef.type)
         ]
         return portTypes
     }
@@ -181,13 +181,13 @@ class FlowGenerator implements IGenerator {
                     println('''left port «leftPort» of type «portType» mismatch right port «rightPort» of type «otherPortType»''')               
             }
             else
-                portTypes.put(rightPort.fullQualifiedName, portType)
+                portTypes.put(rightPort.fullyQualifiedPortName, portType)
         ]
             
         streams.filter[rightPort instanceof ExternalReferencePort].forEach[
             val portType = (rightPort as ExternalReferencePort).inputPortType
             if (!(leftPort instanceof ExternalReferencePort)) {
-                portTypes.put(leftPort.fullQualifiedName, portType)
+                portTypes.put(leftPort.fullyQualifiedPortName, portType)
             }
         ]
         return portTypes
@@ -316,7 +316,7 @@ class FlowGenerator implements IGenerator {
     }
     
     def generateInputPortImplementations(OwnPort ownPort, Iterable<Stream> allStreamsWithOwnPortOnLeftSide) '''
-        override process«ownPort.port.name.toFirstUpper»(«inferredPortTypes.get(ownPort.fullQualifiedName)» msg) {
+        override process«ownPort.port.name.toFirstUpper»(«inferredPortTypes.get(ownPort.fullyQualifiedPortName)» msg) {
             «allStreamsWithOwnPortOnLeftSide.
                 filter[(leftPort as OwnPort)?.port.name == ownPort.port.name].
                 map[rightPort.generateInputForwarding].join»
@@ -395,16 +395,16 @@ class FlowGenerator implements IGenerator {
     }
     
     def generateInputPort(OwnPort input) {
-        var portTypeName = inferredPortTypes.get(input.fullQualifiedName)
+        var portTypeName = inferredPortTypes.get(input.fullyQualifiedPortName)
         if (portTypeName == null || portTypeName.length == 0)
-            portTypeName = '''<unknow type for "«input.fullQualifiedName»"'''
+            portTypeName = '''<unknow type for "«input.fullyQualifiedPortName»"'''
         '''
             @InputPort(name="«input.port.name»", type=«portTypeName»)
         '''
     }
     
     def generateOutputPort(OwnPort output) '''
-        @OutputPort(name="«output.port.name»", type=«inferredPortTypes.get(output.fullQualifiedName)»)
+        @OutputPort(name="«output.port.name»", type=«inferredPortTypes.get(output.fullyQualifiedPortName)»)
     '''
     
 }
