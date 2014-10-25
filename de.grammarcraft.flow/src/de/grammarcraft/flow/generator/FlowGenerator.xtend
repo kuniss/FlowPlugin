@@ -53,7 +53,7 @@ class FlowGenerator implements IGenerator {
             fsa.generateFile('''«fullyQualifiedName.skipLast(1).segments.join('/')»/«name».xtend''', generate(inferredPortTypes))
         ]
         
-        fsa.generateFile("log.txt", '''
+        fsa.generateFile(resource.normalizedURI.lastSegment + ".log", '''
             // own ports
             «resource.allContents.toIterable.filter(typeof(OwnPort)).distinct[fullQualifiedName]
                 .map['''own port "«fullQualifiedName»"'''].join('\n')»
