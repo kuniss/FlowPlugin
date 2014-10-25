@@ -31,9 +31,27 @@ import org.eclipse.xtext.xbase.annotations.xAnnotations.XAnnotation
 import org.eclipse.xtext.xbase.lib.Functions.Function1
 import static extension org.eclipse.xtext.EcoreUtil2.*
 
+class QualifiedPortNameProvider {
+    @Inject extension IQualifiedNameProvider
+
+    def String fullyQualifiedPortName(Port port) {
+        switch port {
+            OwnPort: {
+                val fu = port.getContainerOfType(FunctionUnit)
+                '''«fu.fullyQualifiedName».«port.port?.name»'''
+            } 
+            ExternalReferencePort: '''«port.type.identifier».«port.port?.name»'''
+            ForeignPort: '''«port.functionUnit.fullyQualifiedName».«port.port?.name»'''
+        }
+    }
+    
+    
+    
+}
 
 class FlowGenerator implements IGenerator {
     @Inject extension IQualifiedNameProvider
+    @Inject extension QualifiedPortNameProvider
     
     var Map<String, String> inferredPortTypes 
 
@@ -96,17 +114,6 @@ class FlowGenerator implements IGenerator {
             }
         ]
         return inferredPortTypes
-    }
-    
-    def String fullyQualifiedPortName(Port port) {
-        switch port {
-            OwnPort: {
-                val fu = port.getContainerOfType(FunctionUnit)
-                '''«fu.fullyQualifiedName».«port.port?.name»'''
-            } 
-            ExternalReferencePort: '''«port.type.identifier».«port.port?.name»'''
-            ForeignPort: '''«port.functionUnit.fullyQualifiedName».«port.port?.name»'''
-        }
     }
     
     
