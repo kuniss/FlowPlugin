@@ -29,6 +29,8 @@ import org.eclipse.xtext.xbase.XListLiteral
 import org.eclipse.xtext.xbase.XStringLiteral
 import org.eclipse.xtext.xbase.annotations.xAnnotations.XAnnotation
 import org.eclipse.xtext.xbase.lib.Functions.Function1
+import static extension org.eclipse.xtext.EcoreUtil2.*
+
 
 class FlowGenerator implements IGenerator {
     @Inject extension IQualifiedNameProvider
@@ -99,7 +101,7 @@ class FlowGenerator implements IGenerator {
     def String fullQualifiedName(Port port) {
         switch port {
             OwnPort: {
-                val fu = port.eContainer.eContainer as FunctionUnit
+                val fu = port.getContainerOfType(FunctionUnit)
                 '''«fu.fullyQualifiedName».«port.port?.name»'''
             } 
             ExternalReferencePort: '''«port.type.identifier».«port.port?.name»'''
