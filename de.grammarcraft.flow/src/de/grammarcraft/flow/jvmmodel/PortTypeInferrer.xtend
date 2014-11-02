@@ -23,9 +23,10 @@ import org.eclipse.xtext.xbase.XFeatureCall
 import org.eclipse.xtext.xbase.XListLiteral
 import org.eclipse.xtext.xbase.XStringLiteral
 import org.eclipse.xtext.xbase.annotations.xAnnotations.XAnnotation
+import static extension de.grammarcraft.flow.jvmmodel.XtendFlowPortAnnotationExtractor.*
 
 class PortTypeInferrer {
-    
+
     val Object singleComputation = new Object
 
     val List<Stream> streams
@@ -171,23 +172,6 @@ class PortTypeInferrer {
         return 'port_type_could_not_be_determined'
     }
     
-    private static def inputPortAnnotation(ExternalReferencePort portSpec) {
-            val portDeclaringType = portSpec.type.type as JvmDeclaredType
-            val fuAnnotation = portDeclaringType?.annotations.findFirst[annotation.qualifiedName == de.grammarcraft.xtend.flow.annotations.FunctionUnit.name] // should be only one
-            val inputPortsAnnotationValue = fuAnnotation?.values.findFirst[valueName == 'inputPorts'] as JvmCustomAnnotationValue
-            val inputPortAnnotationsList = inputPortsAnnotationValue?.values.findFirst[it instanceof XListLiteral] as XListLiteral
-            if (portSpec.port == null) { // implicit on and only port of the particular function unit has to be used
-                val xAnnotationList = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation]
-                if (xAnnotationList.length > 1) {
-                    // TODO log warning "port specification is ambiguous as no port is specified but function unit has more than one port"
-                }
-                xAnnotationList.head
-            }
-            else {
-                inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
-                findFirst[(elementValuePairs.findFirst[it.element.identifier == InputPort.name + '.name()']?.value as XStringLiteral).value == portSpec.port.name]
-            }
-    }
     
     private static def String outputPortType(ExternalReferencePort portSpec) {
         if(portSpec.type.type instanceof JvmDeclaredType) {
@@ -201,24 +185,6 @@ class PortTypeInferrer {
             }
         }
         return 'port_type_could_not_be_determined'
-    }
-    
-    private static def outputPortAnnotation(ExternalReferencePort portSpec) {
-        val portDeclaringType = portSpec.type.type as JvmDeclaredType
-        val fuAnnotation = portDeclaringType?.annotations.findFirst[annotation.qualifiedName == de.grammarcraft.xtend.flow.annotations.FunctionUnit.name] // should be only one
-        val inputPortsAnnotationValue = fuAnnotation?.values.findFirst[valueName == 'outputPorts'] as JvmCustomAnnotationValue
-        val inputPortAnnotationsList = inputPortsAnnotationValue?.values.findFirst[it instanceof XListLiteral] as XListLiteral
-        if (portSpec.port == null) { // implicit on and only port of the particular function unit has to be used
-            val xAnnotationList = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation]
-            if (xAnnotationList.length > 1) {
-                // TODO log warning "port specification is ambiguous as no port is specified but function unit has more than one port"
-            }
-            xAnnotationList.head
-        }
-        else {
-            inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
-            findFirst[(elementValuePairs.findFirst[it.element.identifier == OutputPort.name + '.name()']?.value as XStringLiteral).value == portSpec.port.name]
-        }
     }
     
     private def computePortTypesFromExternalRefs(Iterable<FunctionUnit> units, Iterable<Stream> streams) {
@@ -246,4 +212,47 @@ class PortTypeInferrer {
         }
     }
         
+}
+
+/**
+ * Helper methods to get the flow port annotations get extracted from runtime type system. 
+ */
+class XtendFlowPortAnnotationExtractor {
+    
+    static def inputPortAnnotation(ExternalReferencePort portSpec) {
+        val portDeclaringType = portSpec.type.type as JvmDeclaredType
+        val fuAnnotation = portDeclaringType?.annotations.findFirst[annotation.qualifiedName == de.grammarcraft.xtend.flow.annotations.FunctionUnit.name] // should be only one
+        val inputPortsAnnotationValue = fuAnnotation?.values.findFirst[valueName == 'inputPorts'] as JvmCustomAnnotationValue
+        val inputPortAnnotationsList = inputPortsAnnotationValue?.values.findFirst[it instanceof XListLiteral] as XListLiteral
+        if (portSpec.port == null) { // implicit on and only port of the particular function unit has to be used
+            val xAnnotationList = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation]
+            if (xAnnotationList.length > 1) {
+                // TODO log warning "port specification is ambiguous as no port is specified but function unit has more than one port"
+            }
+            xAnnotationList.head
+        }
+        else {
+            inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
+            findFirst[(elementValuePairs.findFirst[it.element.identifier == InputPort.name + '.name()']?.value as XStringLiteral).value == portSpec.port.name]
+        }
+    }
+
+    static def outputPortAnnotation(ExternalReferencePort portSpec) {
+        val portDeclaringType = portSpec.type.type as JvmDeclaredType
+        val fuAnnotation = portDeclaringType?.annotations.findFirst[annotation.qualifiedName == de.grammarcraft.xtend.flow.annotations.FunctionUnit.name] // should be only one
+        val inputPortsAnnotationValue = fuAnnotation?.values.findFirst[valueName == 'outputPorts'] as JvmCustomAnnotationValue
+        val inputPortAnnotationsList = inputPortsAnnotationValue?.values.findFirst[it instanceof XListLiteral] as XListLiteral
+        if (portSpec.port == null) { // implicit on and only port of the particular function unit has to be used
+            val xAnnotationList = inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation]
+            if (xAnnotationList.length > 1) {
+                // TODO log warning "port specification is ambiguous as no port is specified but function unit has more than one port"
+            }
+            xAnnotationList.head
+        }
+        else {
+            inputPortAnnotationsList.elements.filter(typeof(XAnnotation)).map[it as XAnnotation].
+            findFirst[(elementValuePairs.findFirst[it.element.identifier == OutputPort.name + '.name()']?.value as XStringLiteral).value == portSpec.port.name]
+        }
+    }
+    
 }
