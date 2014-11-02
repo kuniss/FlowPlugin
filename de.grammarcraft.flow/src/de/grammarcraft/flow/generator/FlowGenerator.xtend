@@ -7,7 +7,7 @@ import de.grammarcraft.flow.flow.FunctionUnit
 import de.grammarcraft.flow.flow.OwnPort
 import de.grammarcraft.flow.flow.Port
 import de.grammarcraft.flow.flow.Stream
-import de.grammarcraft.flow.inferrer.PortTypeInferrer
+import de.grammarcraft.flow.jvmmodel.PortTypeInferrer
 import de.grammarcraft.xtend.flow.annotations.InputPort
 import de.grammarcraft.xtend.flow.annotations.OutputPort
 import java.util.ArrayList

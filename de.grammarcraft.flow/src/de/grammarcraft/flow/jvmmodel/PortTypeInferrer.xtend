@@ -1,4 +1,4 @@
-package de.grammarcraft.flow.inferrer
+package de.grammarcraft.flow.jvmmodel
 
 import de.grammarcraft.flow.flow.ExternalReferencePort
 import de.grammarcraft.flow.flow.FunctionUnit
