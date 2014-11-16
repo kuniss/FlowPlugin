@@ -83,6 +83,7 @@ class FlowGenerator implements IGenerator {
         import de.grammarcraft.xtend.flow.annotations.FunctionUnit
         import de.grammarcraft.xtend.flow.annotations.InputPort
         import de.grammarcraft.xtend.flow.annotations.OutputPort
+        import de.grammarcraft.xtend.flow.annotations.Wiring
                 
         @FunctionUnit(
             inputPorts = #[
@@ -95,10 +96,8 @@ class FlowGenerator implements IGenerator {
         class «unit.name» {
             «val externaLAndForeignPorts = unit.streams.fold(new ArrayList<Port>)[list, stream | list.addBothPortsOf(stream)].filter[!(it instanceof OwnPort)].distinct[varName].toList»
             «externaLAndForeignPorts.map[generateFunctionUnitVarInstantiation].join»
-            new() {
-                bind();
-            }
             
+            @Wiring
             private def bind() {
                 «val streamsWithOwnRightPort = unit.streams.filter[rightPort instanceof OwnPort].toList»
                 «streamsWithOwnRightPort.map[generateForwardingFromLeftFUs].join»
